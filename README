@@ -1,0 +1,43 @@
+# Statistical Arbitrage Framework (Kalman Filter Edition)
+
+A modular Python framework for **statistical arbitrage**, focusing on **Kalman-filtered, time-varying hedge ratios**, cointegration-style spread modeling, rolling ADF stationarity testing, signal generation, and full backtesting.
+
+This project enables you to:
+- Fetch historical market data (Yahoo Finance via `yfinance`)
+- Estimate dynamic hedge ratios using a **Kalman Filter**
+- Construct spreads and test them for **stationarity**
+- Generate long/short trading signals
+- Run backtests on individual pairs or full batches
+- Produce performance reports for each pair
+
+The project is built for scalability, reproducibility, and batch automation (overnight runs).
+
+---
+
+## 🚀 Features
+
+### 📉 Data Handling
+- Uses a `DataHandler` class built on `yfinance`
+- Ensures completeness checks and business-day alignment
+- Supports multi-asset data pulls
+
+### 🔧 Kalman Filter Hedge Ratio
+- Online estimation of β(t) between two assets
+- Adaptive spread construction
+  `spread(t) = price_1(t) - β(t) * price_2(t)`
+
+### 📈 Statistical Testing
+- Rolling **ADF** stationarity test
+- Threshold detection for entry/exit signals
+
+### 🔁 Backtesting Engine
+- Signal-driven long/short execution
+- PnL tracking
+- Sharpe ratio, hit ratio, trade stats
+- Daily equity curve generation
+
+### 🧪 Batch Mode
+Run dozens or hundreds of pairs overnight:
+- Parallel or sequential execution
+- Dump results into structured reports (JSON, CSV, plots)
+
