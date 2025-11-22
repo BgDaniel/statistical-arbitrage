@@ -23,7 +23,7 @@ def main():
 
     arb = PairArbitrage(pair_data, config)
     result = arb.analyze(plot=True)
-    arb.backtest_strategy(plot=True)
+    arb.backtest_strategy(entry_z=2.0, exit_z=0.5, plot=True)
 
     print("\nFinished.")
     print("Keys:", result.keys())

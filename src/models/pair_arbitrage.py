@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 
 from src.models.kalman_filter import KalmanFilter
 from src.models.config import ArbitrageConfig
-from src.plots.plot_utils import plot_beta_and_spread
 
 
 logger = logging.getLogger(__name__)
@@ -155,11 +154,7 @@ class PairArbitrage:
 
         self.beta = self._estimate_beta_kalman()
         self.spread = self._compute_spread(self.beta)
-        diag = self._diagnose_spread(self.spread, plot=plot)
-
-        # Plotting
-        if plot and self.config.plot:
-            plot_beta_and_spread(self.beta, self.spread)
+        diag = self._diagnose_spread(self.spread, plot=False)
 
         return {
             "beta": self.beta,
@@ -167,51 +162,75 @@ class PairArbitrage:
             "diagnostics": diag,
         }
 
-    @staticmethod
-    def _compute_pnl_with_reinvestment(
-        spread: pd.Series, position: pd.Series, initial_capital: float
+    def _compute_capital(
+            self,
+            position: pd.Series,
+            initial_capital: float,
+            max_long: float,
+            max_short: float
     ) -> pd.DataFrame:
         """
-        Compute daily and cumulative PnL assuming full reinvestment.
+        Compute daily total capital considering all position transitions,
+        limiting the exposure in long and short positions by absolute leg amounts.
+        Tracks capital invested in each underlying asset.
 
         Args:
-            spread: spread series
-            position: position series (-1, 0, +1)
-            initial_capital: starting capital
+            position: Series of positions (-1, 0, +1)
+            prev_capital: Starting capital
+            max_long: Max € allowed to invest in x when long
+            max_short: Max € allowed to invest in y when short
 
         Returns:
-            DataFrame with daily PnL, cumulative PnL, capital over time
+            pd.DataFrame: columns ["total_capital", "pos_x", "pos_y"]
         """
-        capital = initial_capital
-        pnl_list = []
-        cum_pnl_list = []
-        capital_list = []
+        capital_series = [initial_capital]
 
-        for t in range(len(spread)):
-            if t == 0:
-                pnl = 0.0
-            else:
-                pnl = (
-                    position.iloc[t - 1]
-                    * (spread.iloc[t] - spread.iloc[t - 1])
-                    * capital
-                    / spread.iloc[t - 1]
-                )
-            capital += pnl
-            pnl_list.append(pnl)
-            cum_pnl_list.append(capital - initial_capital)
-            capital_list.append(capital)
+        for t in range(1, len(self.spread)):
+            prev_dir = position.iloc[t - 1]
+            curr_dir = position.iloc[t]
+            prev_capital = capital_series[-1]
 
-        return pd.DataFrame(
-            {"pnl": pnl_list, "cum_pnl": cum_pnl_list, "capital": capital_list},
-            index=spread.index,
-        )
+            prev_spread = self.spread.iloc[t - 1]
+            curr_spread = self.spread.iloc[t]
+
+            prev_x_price = self.x.iloc[t - 1]
+            prev_y_price = self.y.iloc[t - 1]
+
+            prev_beta_t = self.beta.iloc[t - 1]
+
+            prev_delta = prev_dir * prev_capital / abs(prev_spread)
+
+            # For x leg (scaled by beta)
+            if -prev_delta * prev_beta_t * prev_x_price > max_long:
+                prev_delta = -max_long / (prev_beta_t * prev_x_price)
+            elif -prev_delta * prev_beta_t * prev_x_price < -max_short:
+                prev_delta = max_short / (prev_beta_t * prev_x_price)
+
+            # For y leg
+            if prev_delta * prev_y_price > max_long:
+                prev_delta = max_long / prev_y_price
+            elif prev_delta * prev_y_price < -max_short:
+                prev_delta = -max_short / prev_y_price
+
+            delta_capital = prev_delta * (curr_spread - prev_spread)
+
+            if prev_dir != 0:
+                prev_capital += delta_capital
+
+            # Prevent negative capital
+            prev_capital = max(prev_capital, 0.0)
+
+            capital_series.append(prev_capital)
+
+        return pd.Series(capital_series, index=self.spread.index, name="total_capital")
 
     def backtest_strategy(
         self,
         entry_z: float = 2.0,
         exit_z: float = 0.5,
         capital: float = 1000.0,
+        max_long: float = 10000.0,
+        max_short: float = 10000.0,
         plot: bool = True,
     ) -> pd.DataFrame:
         """
@@ -221,6 +240,8 @@ class PairArbitrage:
             entry_z (float): Entry threshold for z-score.
             exit_z (float): Exit threshold for z-score.
             capital (float): Initial investment capital.
+            max_long_eur: Maximum € allowed to invest in long spread
+            max_short_eur: Maximum € allowed to invest in short spread
             plot (bool): Whether to plot results.
 
         Returns:
@@ -237,41 +258,44 @@ class PairArbitrage:
         # --- Trading signals ---
         position = np.zeros(len(spread))
         for t in range(1, len(spread)):
-            if zscore.iloc[t] > entry_z:
-                position[t] = -1  # short spread
-            elif zscore.iloc[t] < -entry_z:
-                position[t] = +1  # long spread
-            elif abs(zscore.iloc[t]) < exit_z:
-                position[t] = 0  # flat
-            else:
-                position[t] = position[t - 1]  # hold position
+            prev_pos = position[t - 1]
+            z = zscore.iloc[t]
+
+            if prev_pos == 0:  # currently flat
+                if z > entry_z:
+                    position[t] = -1  # enter short
+                elif z < -entry_z:
+                    position[t] = 1  # enter long
+                else:
+                    position[t] = 0  # stay flat
+            elif prev_pos == 1:  # currently long
+                if z >= -exit_z:
+                    position[t] = 0  # exit long
+                else:
+                    position[t] = 1  # hold long
+            elif prev_pos == -1:  # currently short
+                if z <= exit_z:
+                    position[t] = 0  # hold short
+                else:
+                    position[t] = -1  # exit short
 
         position = pd.Series(position, index=spread.index)
 
-        # --- Compute PnL using the helper function ---
-        pnl_df = PairArbitrage._compute_pnl_with_reinvestment(spread, position, capital)
-        daily_pnl = pnl_df["pnl"]
-        cum_pnl = pnl_df["cum_pnl"]
-        capital_series = pnl_df["capital"]
+        # --- Compute daily total capital using the helper function ---
+        capital_series = self._compute_capital(
+            position, capital, max_long, max_short
+        )
+
+        # Compute overall return
         total_return = (capital_series.iloc[-1] - capital) / capital
 
-        # --- Annual returns ---
-        if isinstance(spread.index, pd.DatetimeIndex):
-            df_returns = pd.DataFrame({"daily_pnl": daily_pnl})
-            df_returns["year"] = df_returns.index.year
-            annual_return = df_returns.groupby("year")["daily_pnl"].sum()
-        else:
-            annual_return = pd.Series(dtype=float)
-
-        # --- Compile result dataframe ---
+        # Compile result dataframe
         result = pd.DataFrame(
             {
                 "spread": spread,
                 "zscore": zscore,
                 "position": position,
-                "daily_pnl": daily_pnl,
-                "cum_pnl": cum_pnl,
-                "capital": capital_series,
+                "total_capital": capital_series,
                 "total_return": total_return,
             }
         )
@@ -280,66 +304,78 @@ class PairArbitrage:
         if plot and self.config.plot:
             fig, axs = plt.subplots(4, 1, figsize=(14, 16), sharex=True)
 
-            # 1. Underlyings
-            axs[0].plot(self.y.index, self.y, label=self.tickers[0], color="red")
-            axs[0].plot(self.x.index, self.x, label=self.tickers[1], color="blue")
-            axs[0].set_title("Underlying Prices")
-            axs[0].grid(True)
-            axs[0].legend()
+            # 1. Beta timeseries (if available)
+            if hasattr(self, "beta"):
+                axs[0].plot(self.beta.index, self.beta, color="blue", label="Beta")
+                axs[0].set_title("Beta Time Series")
+                axs[0].grid(True)
+                axs[0].legend()
 
-            # 2. Spread + signals + z-score corridor
+            # 2a. Spread
             axs[1].plot(spread.index, spread, color="green", label="Spread")
-            upper = roll_mean + entry_z * roll_std
-            lower = roll_mean - entry_z * roll_std
-            axs[1].fill_between(
-                spread.index,
-                lower,
-                upper,
-                color="grey",
-                alpha=0.2,
-                label=f"±{entry_z} Z-score",
+            axs[1].set_title("Spread")
+            axs[1].set_ylabel("Spread")
+            axs[1].grid(True)
+            axs[1].legend()
+
+            # 2a. Spread
+            axs[1].plot(spread.index, spread, color="green", label="Spread")
+            axs[1].set_title("Spread")
+            axs[1].set_ylabel("Spread")
+            axs[1].grid(True)
+            axs[1].legend()
+
+            # 2b. Z-score with entry/exit thresholds and LONG/SHORT markers
+            axs[2].plot(
+                zscore.index, zscore, color="grey", label="Z-score", linewidth=1
             )
+            axs[2].axhline(
+                entry_z, color="red", linestyle="--", label="Entry Threshold"
+            )
+            axs[2].axhline(-entry_z, color="red", linestyle="--")
+            axs[2].axhline(exit_z, color="blue", linestyle="--", label="Exit Threshold")
+            axs[2].axhline(-exit_z, color="blue", linestyle="--")
+
+            # Scatter LONG/SHORT signals
             buy_idx = result.index[result["position"] == 1]
             sell_idx = result.index[result["position"] == -1]
-            axs[1].scatter(
+            axs[2].scatter(
                 buy_idx,
-                spread.loc[buy_idx],
+                zscore.loc[buy_idx],
                 color="blue",
                 marker="^",
                 s=60,
                 label="LONG",
             )
-            axs[1].scatter(
+            axs[2].scatter(
                 sell_idx,
-                spread.loc[sell_idx],
+                zscore.loc[sell_idx],
                 color="red",
                 marker="v",
                 s=60,
                 label="SHORT",
             )
-            axs[1].set_title("Spread with Signals and Z-score Corridor")
-            axs[1].grid(True)
-            axs[1].legend()
 
-            # 3. Daily & cumulative PnL
-            ax2 = axs[2].twinx()
-            axs[2].plot(cum_pnl.index, cum_pnl, color="black", label="Cumulative PnL")
-            ax2.plot(
-                daily_pnl.index, daily_pnl, color="purple", alpha=0.7, label="Daily PnL"
-            )
-            axs[2].set_title("Cumulative PnL (Primary) & Daily PnL (Secondary)")
+            axs[2].set_title("Z-score with Entry/Exit Levels")
+            axs[2].set_ylabel("Z-score")
             axs[2].grid(True)
-            axs[2].legend(loc="upper left")
-            ax2.legend(loc="upper right")
+            axs[2].legend(loc="upper right")
 
-            # 4. Annual returns as bar plot
-            axs[3].bar(
-                annual_return.index.astype(str),
-                annual_return.values,
-                color="skyblue",
+            # 3. Total capital
+            axs[3].plot(
+                capital_series.index,
+                capital_series,
+                color="purple",
+                linewidth=2,
+                label="Total Capital",
             )
-            axs[3].set_title("Annual Returns")
+            axs[3].set_title(
+                f"Daily Total Capital Curve (Total Return: {total_return:.2%})"
+            )
+            axs[3].set_xlabel("Date")
+            axs[3].set_ylabel("Capital")
             axs[3].grid(True)
+            axs[3].legend()
 
             plt.tight_layout()
             plt.show()
