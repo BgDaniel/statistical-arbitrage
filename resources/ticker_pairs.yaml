@@ -1,0 +1,55 @@
+S&P 500:
+  # Highly liquid core S&P 500 ETFs
+  - ["SPY", "IVV"]
+  - ["SPY", "VOO"]
+  - ["IVV", "VOO"]
+
+Nasdaq 100:
+  # QQQ and inverse/leveraged tracking pairs
+  - ["QQQ", "PSQ"]      # PSQ = 1x inverse QQQ
+  - ["QQQ", "QID"]      # QID = 2x inverse QQQ
+  - ["QQQ", "SQQQ"]     # SQQQ = 3x inverse QQQ
+
+S&P 500 Leveraged / Inverse:
+  # SPY with leveraged inverse S&P ETFs
+  - ["SPY", "SDS"]      # SDS = 2x inverse
+  - ["SPY", "SPXU"]     # SPXU = 3x inverse
+
+Financial Sector:
+  # XLF with sector-based leveraged ETFs
+  - ["XLF", "FAZ"]      # FAZ = 3x inverse financials
+  - ["XLF", "FAS"]      # FAS = 3x long financials
+
+Energy / Oil & Gas:
+  # Energy and oil exploration leveraged products
+  - ["XLE", "ERY"]      # ERY = 2x inverse energy
+  - ["XOP", "DRIP"]     # DRIP = 2x inverse E&P
+  - ["XOP", "GUSH"]     # GUSH = 2x long E&P
+
+Gold & Miners:
+  # Precious metals ETFs and their leveraged counterparts
+  - ["GDX", "DUST"]     # DUST = 2x inverse miners
+  - ["GDX", "NUGT"]     # NUGT = 2x long miners
+  - ["GLD", "DGZ"]      # DGZ = 1x inverse gold
+  - ["GLD", "GLL"]      # GLL = 2x inverse gold
+
+Semiconductors:
+  # Semiconductor sector leveraged ETFs
+  - ["SMH", "SOXS"]     # SOXS = 3x inverse semis
+  - ["SMH", "SOXL"]     # SOXL = 3x long semis
+
+Small Caps (Russell 2000):
+  # Russell 2000 indexes and inverses
+  - ["IWM", "RWM"]      # RWM = 1x inverse
+  - ["IWM", "TWM"]      # TWM = 2x inverse
+  - ["IWM", "SRTY"]     # SRTY = 3x inverse
+
+International Markets:
+  # Developed and emerging market ETFs + inverse
+  - ["EEM", "EEV"]      # EEV = 2x inverse EM
+  - ["EFA", "EFZ"]      # EFZ = 1x inverse DM
+
+Treasuries / Bonds:
+  # Long-term Treasury ETFs + inverse leveraged trackers
+  - ["TLT", "TBT"]      # TBT = 2x inverse long-term Treasuries
+  - ["TLT", "TMV"]      # TMV = 3x inverse long-term Treasuries

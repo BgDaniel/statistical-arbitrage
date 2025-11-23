@@ -4,7 +4,7 @@ from models.config import ArbitrageConfig
 
 
 def main():
-    tickers = ["AAPL", "MSFT"]
+    tickers = ["QQQ", "PSQ"]
 
     dh = DataHandler(
         tickers=tickers,
@@ -14,16 +14,17 @@ def main():
     prices = dh.fetch_data()
 
     # Prepare dict for PairArbitrage
+
     pair_data = {
-        "AAPL": prices["AAPL"],
-        "MSFT": prices["MSFT"],
+        "QQQ": prices["QQQ"],
+        "PSQ": prices["PSQ"],
     }
 
     config = ArbitrageConfig(window=120, plot=True)
 
     arb = PairArbitrage(pair_data, config)
     result = arb.analyze(plot=True)
-    arb.backtest_strategy(entry_z=2.0, exit_z=0.5, plot=True)
+    arb.backtest_strategy(entry_z=2.0, exit_z=1.0, plot=True)
 
     print("\nFinished.")
     print("Keys:", result.keys())

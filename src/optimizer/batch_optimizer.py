@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+import os
+import yaml
 import logging
 from typing import List, Tuple
 
@@ -85,10 +87,40 @@ class BatchParamOptimizer:
         return self.optimal_df
 
 
+def load_ticker_pairs_from_yaml(filename: str) -> List[Tuple[str, str]]:
+    """
+    Reads a YAML file containing ETF ticker pairs and returns a flat list of tuples.
+
+    Args:
+        filename (str): The YAML filename (e.g., 'etf_pairs.yaml').
+
+    Returns:
+        List[Tuple[str, str]]: List of ticker pairs as tuples.
+    """
+    # Get path from environment variable
+    resources_path = os.getenv("PATH_TO_RESOURCES")
+    if not resources_path:
+        raise EnvironmentError("PATH_TO_RESOURCES environment variable is not set.")
+
+    yaml_path = os.path.join(resources_path, filename)
+    if not os.path.isfile(yaml_path):
+        raise FileNotFoundError(f"YAML file not found at {yaml_path}")
+
+    # Load YAML
+    with open(yaml_path, "r") as f:
+        parsed = yaml.safe_load(f)
+
+    # Flatten into list of tuples
+    ticker_pairs = [tuple(pair) for category in parsed.values() for pair in category]
+
+    return ticker_pairs
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    ticker_pairs = [("AAPL", "MSFT"), ("GOOG", "AMZN")]
+    ticker_pairs = load_ticker_pairs_from_yaml("ticker_pairs.yaml")
+
     start_date = "2020-01-01"
     end_date = "2025-11-01"
 

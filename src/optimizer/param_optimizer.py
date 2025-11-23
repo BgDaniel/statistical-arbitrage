@@ -180,7 +180,7 @@ class ParamOptimizer:
 
 
 if __name__ == "__main__":
-    tickers = ("AAPL", "MSFT")
+    tickers = ("SPY", "IVV")
     start_date = "2020-01-01"
     end_date = "2025-11-01"
 
